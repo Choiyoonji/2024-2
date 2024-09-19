@@ -53,7 +53,7 @@ forward_image = forward_transform(in_image, deg)
 
 backward_image = backward_transform(forward_image, deg)
 
-stack_image = np.hstack([in_image,forward_image,backward_image])
+stack_image = np.vstack([forward_image,backward_image])
 cv2.imshow('Stack Image', stack_image)
 
 cv2.imwrite('dgu_gray_stack.png', stack_image)
