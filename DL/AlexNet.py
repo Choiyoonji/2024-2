@@ -11,7 +11,7 @@ class AlexNet(nn.Module):
     def __init__(self, num_cls=1000):
         super(AlexNet, self).__init__()
 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU()
         self.conv1 = nn.Sequential(
             nn.Conv2d(3, 96, kernel_size=11, stride=4, padding=2),
             nn.ReLU(inplace=True),
@@ -28,9 +28,9 @@ class AlexNet(nn.Module):
             nn.MaxPool2d(kernel_size=3, stride=2),
         )
 
-        self.conv3 = nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1),
+        self.conv3 = nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1)
 
-        self.skip2 = self.skip_connection(384, 265)
+        self.skip2 = self.skip_connection(384, 256)
 
         self.conv4 = nn.Sequential(
             nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
@@ -42,7 +42,7 @@ class AlexNet(nn.Module):
             nn.MaxPool2d(kernel_size=3, stride=2),
         )
 
-        self.avgpool = nn.AdaptiveAvgPoll2d((6,6))
+        self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
         
         self.classifier = nn.Sequential(
             nn.Linear(256 * 6 * 6, 4096),
@@ -58,7 +58,7 @@ class AlexNet(nn.Module):
 
     def skip_connection(self, in_dim, out_dim):
         sc = nn.Sequential(
-            nn.Conv2d(in_dim, out_dim, kernel_size=1),
+            nn.Conv2d(in_dim, out_dim, kernel_size=3, stride=2),
             nn.BatchNorm2d(out_dim)
         )
         return sc
@@ -68,11 +68,11 @@ class AlexNet(nn.Module):
 
         skip1_out = self.skip1(x)
         x = self.conv2(x)
-        x = nn.ReLU(self.conv3(x) + skip1_out)
+        x = self.relu(self.conv3(x) + skip1_out)
 
         skip2_out = self.skip2(x)
         x = self.conv4(x)
-        x = nn.ReLU(self.conv5(x) + skip2_out)
+        x = self.relu(self.conv5(x) + skip2_out)
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
@@ -83,13 +83,13 @@ class AlexNet(nn.Module):
 if __name__== '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = AlexNet(num_cls=10)
+    model = AlexNet(num_cls=10).to(device)
     print(model)
 
     # 데이터셋 전처리 및 데이터 증강
     transform_train = transforms.Compose([
-        transforms.Resize(227),
-        transforms.RandomCrop(227, padding=4),
+        transforms.Resize(256),
+        transforms.RandomCrop(227),
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.ToTensor(),
