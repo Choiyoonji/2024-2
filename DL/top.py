@@ -42,6 +42,39 @@ def save_confusion_matrix(model, dataloader, device, class_names, save_path="con
     plt.close()
     print(f"Confusion Matrix saved to {save_path}")
 
+def evaluate_topk(model, dataloader, device, topk=(1, 5)):
+    """
+    Top-k 정확도를 계산합니다.
+    Args:
+        model: PyTorch 모델.
+        dataloader: 테스트 데이터 로더.
+        device: 'cuda' 또는 'cpu'.
+        topk: 계산할 k 값들 (예: (1, 5)).
+    Returns:
+        topk_accuracy: 각 k 값에 대한 정확도를 딕셔너리로 반환.
+    """
+    model.eval()  # 평가 모드
+    correct = {k: 0 for k in topk}
+    total = 0
+
+    with torch.no_grad():  # 그래디언트 계산 비활성화
+        for images, labels in dataloader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)  # 모델의 예측값
+            _, preds = outputs.topk(max(topk), dim=1, largest=True, sorted=True)  # Top-k 추출
+            preds = preds.t()  # (k, batch_size) 형태로 전치
+            correct_mask = preds.eq(labels.view(1, -1).expand_as(preds))  # 정답 비교
+
+            # Top-k별로 정확도 계산
+            for k in topk:
+                correct[k] += correct_mask[:k].reshape(-1).sum().item()
+
+            total += labels.size(0)  # 전체 샘플 수
+
+    # Top-k 정확도 계산
+    topk_accuracy = {f"Top-{k}": 100 * correct[k] / total for k in topk}
+    return topk_accuracy
+
 # 예시 사용법
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -60,6 +93,9 @@ test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False)
 
 # CIFAR-10 클래스 이름
 class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+
+topk_accuracy = evaluate_topk(model, test_loader, device, topk=(1, 5))
+print("Top-k 정확도:", topk_accuracy)
 
 # Confusion Matrix 저장
 save_confusion_matrix(model, test_loader, device, class_names, save_path="confusion_matrix.png")
