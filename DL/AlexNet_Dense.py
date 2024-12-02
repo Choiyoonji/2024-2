@@ -7,44 +7,53 @@ from torchvision import datasets, transforms
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class DenseAlexNet(nn.Module):
     def __init__(self, num_cls):
         super(DenseAlexNet, self).__init__()
 
-        # 각 층의 출력 채널 크기
-        self.conv1_out_channels = 96
-        self.conv2_out_channels = 256
-        self.conv3_out_channels = 384
-        self.conv4_out_channels = 384
-        self.conv5_out_channels = 256
-
-        # 각 컨볼루션 층 정의
+        # Feature extractor 정의
         self.conv1 = nn.Sequential(
-            nn.Conv2d(3, self.conv1_out_channels, kernel_size=3, stride=1, padding=1),  # 크기 유지
+            nn.Conv2d(3, 96, kernel_size=11, stride=4, padding=2),
             nn.ReLU(inplace=True),
             nn.LocalResponseNorm(size=5, alpha=0.0001, beta=0.75, k=2),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 크기 절반으로 감소
+            nn.MaxPool2d(kernel_size=3, stride=2)
         )
 
         self.conv2 = nn.Sequential(
-            nn.Conv2d(self.conv1_out_channels, self.conv2_out_channels, kernel_size=3, stride=1, padding=1),  # 크기 유지
+            nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
             nn.ReLU(inplace=True),
             nn.LocalResponseNorm(size=5, alpha=0.0001, beta=0.75, k=2),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 크기 절반으로 감소
+            nn.MaxPool2d(kernel_size=3, stride=2)
         )
 
-        self.conv3 = nn.Conv2d(self.conv1_out_channels + self.conv2_out_channels, self.conv3_out_channels, kernel_size=3, stride=1, padding=1)  # 크기 유지
+        self.conv3 = nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1)
+        self.conv5 = nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1)
 
-        self.conv4 = nn.Conv2d(self.conv1_out_channels + self.conv2_out_channels + self.conv3_out_channels, self.conv4_out_channels, kernel_size=3, stride=1, padding=1)  # 크기 유지
+        self.pool = nn.MaxPool2d(kernel_size=3, stride=2)
 
-        self.conv5 = nn.Conv2d(self.conv1_out_channels + self.conv2_out_channels + self.conv3_out_channels + self.conv4_out_channels, self.conv5_out_channels, kernel_size=3, stride=1, padding=1)  # 크기 유지
+        # Skip Connections 정의 (1x1 Conv 사용)
 
-        # Pooling layer (최종 크기를 6x6으로 줄이기 위한 Adaptive Pooling)
-        self.pool = nn.AdaptiveAvgPool2d((6, 6))
+        self.skip1 = nn.Sequential(
+            nn.Conv2d(3, 96, kernel_size=1, stride=1),
+            nn.MaxPool2d(kernel_size=13, stride=8)
+        )
+        self.skip2 = nn.Sequential(
+            nn.Conv2d(96, 256, kernel_size=1, stride=1),
+            nn.MaxPool2d(kernel_size=3, stride=2)
+        )
+        self.skip3 = nn.Conv2d(256, 384, kernel_size=1, stride=1)
+        self.skip4 = nn.Conv2d(384, 384, kernel_size=1, stride=1)
+        self.skip5 = nn.Conv2d(384, 256, kernel_size=1, stride=1)
 
-        # Classifier
+        # Classifier 정의
         self.classifier = nn.Sequential(
-            nn.Linear(self.conv5_out_channels * 6 * 6, 4096),
+            nn.Linear(256 * 6 * 6, 4096),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
 
@@ -56,36 +65,37 @@ class DenseAlexNet(nn.Module):
         )
 
     def forward(self, x):
-        # First layer
-        x1 = self.conv1(x)
+        # conv1 + skip connection
+        residual = self.skip1(x)
+        x = self.conv1(x)
+        x = F.relu(x + residual)
 
-        # Second layer
-        x2 = self.conv2(x1)
+        # conv2 + skip connection
+        residual = self.skip2(x)
+        x = self.conv2(x)
+        x = F.relu(x + residual)
 
-        # Concatenate outputs up to conv2
-        x2_cat = torch.cat([x1, x2], dim=1)
+        # conv3 + skip connection
+        residual = self.skip3(x)
+        x = self.conv3(x)
+        x = F.relu(x + residual)
 
-        # Third layer
-        x3 = F.relu(self.conv3(x2_cat))
+        # conv4 + skip connection
+        residual = self.skip4(x)
+        x = self.conv4(x)
+        x = F.relu(x + residual)
 
-        # Concatenate outputs up to conv3
-        x3_cat = torch.cat([x2_cat, x3], dim=1)
-
-        # Fourth layer
-        x4 = F.relu(self.conv4(x3_cat))
-
-        # Concatenate outputs up to conv4
-        x4_cat = torch.cat([x3_cat, x4], dim=1)
-
-        # Fifth layer
-        x5 = F.relu(self.conv5(x4_cat))
+        # conv5 + skip connection
+        residual = self.skip5(x)
+        x = self.conv5(x)
+        x = F.relu(x + residual)
 
         # Pooling
-        x5 = self.pool(x5)
+        x = self.pool(x)
 
         # Flatten and classify
-        x5 = torch.flatten(x5, 1)
-        x = self.classifier(x5)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
         return x
 
 
@@ -115,15 +125,15 @@ if __name__== '__main__':
     train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
     test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=2)
 
     writer = SummaryWriter()
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    num_epochs = 1000
+    num_epochs = 10000
     best_accuracy = 0.0
     early_stop_count = 0
     patience = 10
