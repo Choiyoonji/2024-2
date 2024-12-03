@@ -18,30 +18,41 @@ test_dataset = datasets.CIFAR10(root='./data', train=False, transform=transform_
 test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False)
 
 class AlexNet(nn.Module):
-    def __init__(self, num_cls):
+    def __init__(self, num_cls=1000):
         super(AlexNet, self).__init__()
-        
-        self.features = nn.Sequential(
+
+        self.relu = nn.ReLU()
+        self.conv1 = nn.Sequential(
             nn.Conv2d(3, 96, kernel_size=11, stride=4, padding=2),
             nn.ReLU(inplace=True),
             nn.LocalResponseNorm(size = 5, alpha = 0.0001, beta = 0.75, k = 2),
             nn.MaxPool2d(kernel_size=3, stride=2),
+        )
 
+        self.skip1 = self.skip_connection(96, 384)
+
+        self.conv2 = nn.Sequential(
             nn.Conv2d(96, 256, kernel_size=5, stride=1, padding=2),
             nn.ReLU(inplace=True),
             nn.LocalResponseNorm(size = 5, alpha = 0.0001, beta = 0.75, k = 2),
             nn.MaxPool2d(kernel_size=3, stride=2),
+        )
 
-            nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
+        self.conv3 = nn.Conv2d(256, 384, kernel_size=3, stride=1, padding=1)
 
+        self.skip2 = self.skip_connection(384, 256)
+
+        self.conv4 = nn.Sequential(
             nn.Conv2d(384, 384, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=True)
+        )
 
+        self.conv5 = nn.Sequential(
             nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
         )
+
+        self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
         
         self.classifier = nn.Sequential(
             nn.Linear(256 * 6 * 6, 4096),
@@ -55,16 +66,38 @@ class AlexNet(nn.Module):
             nn.Linear(4096, num_cls),
         )
 
+    def skip_connection(self, in_dim, out_dim):
+        sc = nn.Sequential(
+            nn.Conv2d(in_dim, out_dim, kernel_size=3, stride=2),
+            nn.BatchNorm2d(out_dim)
+        )
+        return sc
+    
+    def feature(self, x):
+        x = self.conv1(x)
+
+        skip1_out = self.skip1(x)
+        x = self.conv2(x)
+        x = self.relu(self.conv3(x) + skip1_out)
+
+        skip2_out = self.skip2(x)
+        x = self.conv4(x)
+        x = self.relu(self.conv5(x) + skip2_out)
+
+        return x
+
     def forward(self, x):
-        x = self.features(x)
+        x = self.feature(x)
+
+        x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.classifier(x)
         return x
-
+    
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 model = AlexNet(num_cls=10).to(device)  
-model.load_state_dict(torch.load("best_model_base.pth"))
+model.load_state_dict(torch.load("best_model.pth"))
 model.eval()
 
 # 3. 임베딩 추출
@@ -74,7 +107,7 @@ labels = []
 with torch.no_grad():
     for images, targets in test_loader:
         # 모델에서 임베딩 추출
-        features = model.features(images.to(device))
+        features = model.feature(images.to(device))
         features = features.view(features.size(0), -1)  # Flatten
         embeddings.append(features.cpu().numpy())
         labels.append(targets.cpu().numpy())

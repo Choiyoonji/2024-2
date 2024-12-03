@@ -125,22 +125,24 @@ if __name__== '__main__':
     train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
     test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=2)
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=2)
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=2)
+    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=2)
 
     writer = SummaryWriter()
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
     num_epochs = 10000
     best_accuracy = 0.0
     early_stop_count = 0
-    patience = 10
+    patience = 30
 
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        correct = 0
+        total = 0
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
@@ -152,6 +154,12 @@ if __name__== '__main__':
 
             running_loss += loss.item() * images.size(0)
 
+            # Train Accuracy 계산
+            _, predicted = torch.max(outputs, 1)  # 예측 클래스
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()  # 정확한 예측 개수
+
+        epoch_acc = correct / total  # 정확도 계산
         epoch_loss = running_loss / len(train_loader.dataset)
 
         # 검증 루프
@@ -171,7 +179,7 @@ if __name__== '__main__':
         writer.add_scalar("Loss/train", epoch_loss, epoch)
         writer.add_scalar("Accuracy/val", accuracy, epoch)
 
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}, Accuracy: {accuracy:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_acc:.4f}, Accuracy: {accuracy:.4f}")
 
         # Early stopping
         if accuracy > best_accuracy:

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from AlexNet_base import AlexNet
+from models import AlexNet, AlexNetWithSkip1, AlexNetWithSkip2
 
 def save_confusion_matrix(model, dataloader, device, class_names, save_path="confusion_matrix.png"):
     """
@@ -42,7 +42,7 @@ def save_confusion_matrix(model, dataloader, device, class_names, save_path="con
     plt.close()
     print(f"Confusion Matrix saved to {save_path}")
 
-def evaluate_topk(model, dataloader, device, topk=(1, 5)):
+def evaluate_topk(model, dataloader, device, topk=(1, 3)):
     """
     Top-k 정확도를 계산합니다.
     Args:
@@ -80,7 +80,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 모델과 테스트 데이터 로더를 정의하세요
 model = AlexNet(num_cls=10).to(device)  
-model.load_state_dict(torch.load("best_model_base.pth"))
+model.load_state_dict(torch.load("best_model.pth"))
 
 transform_test = transforms.Compose([
     transforms.Resize(227),
@@ -89,13 +89,13 @@ transform_test = transforms.Compose([
 ])
 
 test_dataset = datasets.CIFAR10(root='./data', train=False, transform=transform_test, download=True)
-test_loader = DataLoader(test_dataset, batch_size=512, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 # CIFAR-10 클래스 이름
 class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
-topk_accuracy = evaluate_topk(model, test_loader, device, topk=(1, 5))
+topk_accuracy = evaluate_topk(model, test_loader, device, topk=(1, 3))
 print("Top-k 정확도:", topk_accuracy)
 
 # Confusion Matrix 저장
-save_confusion_matrix(model, test_loader, device, class_names, save_path="confusion_matrix.png")
+save_confusion_matrix(model, test_loader, device, class_names, save_path="confusion_matrix_base.png")

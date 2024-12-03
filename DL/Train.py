@@ -16,7 +16,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 모델 정의
-    model = AlexNet(num_cls=10).to(device)
+    model = AlexNetWithSkip1(num_cls=10).to(device)
     print(model)
 
     # 데이터셋 전처리 및 데이터 증강
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     num_epochs = 1000
     best_accuracy = 0.0
     early_stop_count = 0
-    patience = 10
+    patience = 20
 
     # 학습 루프
     for epoch in range(num_epochs):
@@ -115,7 +115,7 @@ if __name__ == '__main__':
         if val_accuracy > best_accuracy:
             best_accuracy = val_accuracy
             early_stop_count = 0
-            torch.save(model.state_dict(), 'best_model.pth')
+            torch.save(model.state_dict(), 'best_model_skip1.pth')
         else:
             early_stop_count += 1
             if early_stop_count >= patience:
